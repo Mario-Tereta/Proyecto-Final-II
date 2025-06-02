@@ -10,7 +10,7 @@ namespace TechHelper_AI
 
         private void MostrarFormularioEnPanel(Form formHijo)
         {
-            panelContenido.Controls.Clear();         // Limpia el área
+            panelContenido.Controls.Clear();         // Limpia el Ã¡rea
             formHijo.TopLevel = false;
             formHijo.FormBorderStyle = FormBorderStyle.None;
             formHijo.Dock = DockStyle.Fill;
@@ -42,15 +42,15 @@ namespace TechHelper_AI
             MostrarFormularioEnPanel(new Consultas());
         }
 
-        // Método auxiliar para solo mostrar un hijo a la vez
+        
         private void AbrirFormHijo(Form formHijo)
         {
-            // Cierra hijos abiertos (opcional)
+           
             foreach (Form f in this.MdiChildren)
                 f.Close();
 
             formHijo.MdiParent = this;
-            formHijo.WindowState = FormWindowState.Maximized; // Ocupa todo el área MDI
+            formHijo.WindowState = FormWindowState.Maximized; // Ocupa todo el Ã¡rea MDI
             formHijo.Show();
         }
     }
