@@ -13,7 +13,6 @@ using System.ComponentModel;
 using Color = DocumentFormat.OpenXml.Wordprocessing.Color;
 using Microsoft.Identity.Client;
 
-
 namespace TechHelper_AI
 {
     public partial class NuevaConsulta : Form
