@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Data;
 using System.Data.SqlClient;
 using System.Threading.Tasks;
@@ -11,6 +11,7 @@ using System.Net.Http;
 using System.Text;
 using System.ComponentModel;
 using Color = DocumentFormat.OpenXml.Wordprocessing.Color;
+using Microsoft.Identity.Client;
 
 
 namespace TechHelper_AI
@@ -22,8 +23,8 @@ namespace TechHelper_AI
         {
         new { role = "system", content = "Eres un asistente técnico especializado en computadoras e impresoras." }
         };
-        private string solucionEncontrada = "";
-        private bool usoIA = false;
+
+
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public bool ConsultaActualizada { get; private set; }
         private bool esEdicionConsulta = false;
@@ -32,13 +33,13 @@ namespace TechHelper_AI
         private readonly bool modoEdicion;
         private readonly string tipo;
         private readonly int consultaId;
-       
+
         public NuevaConsulta()
         {
             InitializeComponent();
             this.modoEdicion = false; // Modo creación
             this.tipo = ""; // O ponle valor por defecto
-            
+
             txtCodigo.Visible = true;
             txtMarca.Visible = true;
             txtModelo.Visible = true;
@@ -63,6 +64,7 @@ namespace TechHelper_AI
             cbModelo.SelectedIndexChanged += async (s, e) =>
             {
                 await LlenarCamposAutomaticamente();
+
             };
             cbMarcaImpresora.SelectedIndexChanged += async (s, e) =>
             {
@@ -73,8 +75,11 @@ namespace TechHelper_AI
             {
                 await LlenarCamposAutomaticamente();
             };
+
+            // Por si decides dejar el botón Buscar:
+
         }
-        
+
 
         public void CargarConsultaExistente(int id, string tipo)
         {
@@ -98,7 +103,7 @@ namespace TechHelper_AI
                         txtCodigo.Text = reader["Codigo"].ToString();
                         txtMarca.Text = reader["Marca"].ToString();
                         txtModelo.Text = reader["Modelo"].ToString();
-                        txtProblema.Text = reader["Problema"].ToString(); // <-- AQUÍ ESTA BIEN
+                        txtProblema.Text = reader["Problema"].ToString(); 
                         txtSolucion.Text = reader["Solucion"].ToString();
                         txtComentarios.Text = reader["Comentarios"]?.ToString() ?? "";
                         dtpFecha.Value = reader["FechaTrabajo"] == DBNull.Value ? DateTime.Now : Convert.ToDateTime(reader["FechaTrabajo"]);
@@ -106,7 +111,7 @@ namespace TechHelper_AI
                     }
                 }
             }
-            txtCodigo.ReadOnly = true;   // No editable
+            txtCodigo.ReadOnly = true;  
             txtMarca.ReadOnly = true;
             txtModelo.ReadOnly = true;
             // Solo habilita lo necesario
@@ -176,110 +181,38 @@ namespace TechHelper_AI
             }
         }
 
-        private async void btnBuscar_Click(object sender, EventArgs e)
+        public static class Prompt
         {
-            string marca = "";
-            string modelo = "";
-
-            // Marca seleccionada del combo
-            if (rbComputadora.Checked)
-                marca = cbMarca.SelectedItem?.ToString() ?? "";
-            else // impresora
-                marca = cbMarcaImpresora.SelectedItem?.ToString() ?? "";
-
-            // Modelo: texto libre si está visible, combo si no.
-            if (txtModeloLibre.Visible)
-                modelo = txtModeloLibre.Text.Trim();
-            else
-                modelo = cbModelo.SelectedItem?.ToString() ?? "";
-
-            string sintoma = txtSintoma.Text.Trim();
-
-            // ------------------------
-            // VALIDACIONES PARA COMPUTADORA
-            // ------------------------
-            if (rbComputadora.Checked)
+            public static string ShowDialog(string text, string caption)
             {
-                // Marca
-                if (cbMarca.SelectedItem == null)
+                Form prompt = new Form
                 {
-                    MessageBox.Show("Seleccione la marca de la computadora.");
-                    return;
-                }
-
-                // Modelo: exige uno u otro, no ambos
-                if ((txtModeloLibre.Visible && string.IsNullOrWhiteSpace(txtModeloLibre.Text)) ||
-                    (!txtModeloLibre.Visible && cbModelo.SelectedItem == null))
-                {
-                    MessageBox.Show("Seleccione o escriba el modelo de la computadora.");
-                    return;
-                }
+                    Width = 400,
+                    Height = 180,
+                    FormBorderStyle = FormBorderStyle.FixedDialog,
+                    Text = caption,
+                    StartPosition = FormStartPosition.CenterScreen
+                };
+                Label textLabel = new Label { Left = 20, Top = 20, Width = 340, Text = text };
+                TextBox textBox = new TextBox { Left = 20, Top = 50, Width = 340 };
+                Button confirmation = new Button { Text = "Aceptar", Left = 220, Width = 70, Top = 90, DialogResult = DialogResult.OK };
+                Button cancelar = new Button { Text = "Cancelar", Left = 290, Width = 70, Top = 90, DialogResult = DialogResult.Cancel };
+                confirmation.Click += (sender, e) => { prompt.Close(); };
+                cancelar.Click += (sender, e) => { prompt.Close(); };
+                prompt.Controls.Add(textBox);
+                prompt.Controls.Add(confirmation);
+                prompt.Controls.Add(cancelar);
+                prompt.Controls.Add(textLabel);
+                prompt.AcceptButton = confirmation;
+                prompt.CancelButton = cancelar;
+                return prompt.ShowDialog() == DialogResult.OK ? textBox.Text : "";
             }
-            // ------------------------
-            // VALIDACIONES PARA IMPRESORA
-            // ------------------------
-            else if (rbImpresora.Checked)
-            {
-                if (cbMarcaImpresora.SelectedItem == null)
-                {
-                    MessageBox.Show("Seleccione la marca de la impresora.");
-                    return;
-                }
-                if ((txtModeloLibre.Visible && string.IsNullOrWhiteSpace(txtModeloLibre.Text)) ||
-                    (!txtModeloLibre.Visible && cbModelo.SelectedItem == null))
-                {
-                    MessageBox.Show("Seleccione o escriba el modelo de la impresora.");
-                    return;
-                }
-            }
-            // ------------------------
-            // VALIDACION DE SINTOMA
-            // ------------------------
-            if (string.IsNullOrWhiteSpace(sintoma))
-            {
-                MessageBox.Show("Ingrese el síntoma o error.");
-                return;
-            }
-
-            // ------------------------
-            // BÚSQUEDA DE SOLUCIÓN
-            // ------------------------
-            solucionEncontrada = "";
-            usoIA = false;
-
-            // Llama a las funciones de solución usando las variables ya validadas
-            if (rbComputadora.Checked)
-            {
-                solucionEncontrada = await BuscarSolucionComputadoraAsync(marca, modelo, sintoma);
-            }
-            else if (rbImpresora.Checked)
-            {
-                solucionEncontrada = await BuscarSolucionImpresoraAsync(marca, modelo, sintoma);
-            }
-
-            // Si no encontró nada, invoca a la IA
-            if (string.IsNullOrWhiteSpace(solucionEncontrada))
-            {
-                // Esto añade EL MENSAJE DEL USUARIO al historial
-                historialIA.Add(new { role = "user", content = sintoma });
-
-                // Esto consulta la IA con TODO EL HISTORIAL
-                solucionEncontrada = await ConsultarIAAsync(historialIA);
-
-                usoIA = true;
-
-                // Esto añade LA RESPUESTA de la IA al historial
-                historialIA.Add(new { role = "assistant", content = solucionEncontrada });
-                usoIA = true;
-            }
-
-            MessageBox.Show("Solución encontrada:\n" + solucionEncontrada, "Resultado", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private async void btnGuardar_Click(object sender, EventArgs e)
         {
             string marca, modelo, tipo, codigo, problema, solucion, fecha, comentarios;
-            bool usoIA;
+            bool usoIA = false; ;
 
             // Obtener campos comunes
             if (esEdicionConsulta)
@@ -315,7 +248,6 @@ namespace TechHelper_AI
             usoIA = chkIA.Checked;
             comentarios = txtComentarios.Text.Trim();
 
-            // Validaciones duras!
             if (string.IsNullOrWhiteSpace(marca) || string.IsNullOrWhiteSpace(modelo) ||
                 string.IsNullOrWhiteSpace(codigo) || string.IsNullOrWhiteSpace(problema) || string.IsNullOrWhiteSpace(solucion))
             {
@@ -332,7 +264,7 @@ namespace TechHelper_AI
                     await GuardarImpresoraAsync(codigo, marca, modelo, problema, solucion, fecha, usoIA, comentarios, esEdicionConsulta, idConsulta);
 
                 GenerarWord(tipo, codigo, marca, modelo, problema, solucion, fecha, usoIA, comentarios);
-                
+
 
                 MessageBox.Show("Consulta guardada y finalizada correctamente.");
                 ConsultaActualizada = true;
@@ -369,19 +301,15 @@ namespace TechHelper_AI
                 }
 
                 // Modelo: si el textbox libre está visible, toma su texto; si no, toma lo del combo
-                if (txtModeloLibre.Visible)
-                    modelo = txtModeloLibre.Text.Trim();
-                else
-                    modelo = cbModelo.SelectedItem?.ToString() ?? "";
+                modelo = txtModeloLibre.Visible ? txtModeloLibre.Text.Trim() : cbModelo.SelectedItem?.ToString() ?? "";
             }
 
             string codigo = txtCodigo.Text.Trim();
-            string problema = txtProblema.Text.Trim(); 
+            string problema = txtProblema.Text.Trim();
             string fecha = dtpFecha.Value.ToString("yyyy-MM-dd");
             bool usoIA = chkIA.Checked;
             string comentarios = txtComentarios?.Text?.Trim() ?? "";
 
-            // Validar SOLO campos imprescindibles para guardar como pendiente
             if (string.IsNullOrWhiteSpace(marca) || string.IsNullOrWhiteSpace(modelo) ||
     string.IsNullOrWhiteSpace(codigo) || string.IsNullOrWhiteSpace(problema))
             {
@@ -391,11 +319,10 @@ namespace TechHelper_AI
 
             try
             {
-                // Solución PENDIENTE = VACÍA
                 if (tipo == "PC")
-                    await GuardarComputadoraAsync(codigo, marca, modelo, problema, "", fecha, usoIA, comentarios);
+                    await GuardarComputadoraAsync(codigo, marca, modelo, problema, "", fecha, usoIA, comentarios, esEdicionConsulta, idConsulta);
                 else if (tipo == "Impresora")
-                    await GuardarImpresoraAsync(codigo, marca, modelo, problema, "", fecha, usoIA, comentarios);
+                    await GuardarImpresoraAsync(codigo, marca, modelo, problema, "", fecha, usoIA, comentarios, esEdicionConsulta, idConsulta);
 
                 MessageBox.Show("Consulta guardada como pendiente. Podrás completarla después.");
                 ConsultaActualizada = true;
@@ -406,8 +333,6 @@ namespace TechHelper_AI
                 MessageBox.Show("Error al guardar: " + ex.Message);
             }
         }
-               
-        // --- Métodos auxiliares asíncronos ---
 
         private async Task CargarMarcasComputadoraAsync()
         {
@@ -457,7 +382,6 @@ namespace TechHelper_AI
                 }
             }
 
-            // Mostrar u ocultar txtModeloLibre y label según si la lista quedó vacía…
             if (cbModelo.Items.Count == 0)
             {
                 txtModeloLibre.Visible = true;
@@ -533,12 +457,12 @@ namespace TechHelper_AI
 
         private async Task<string> ConsultarIAAsync(List<object> historial)
         {
-            // Ejemplo de integración con OpenAI usando HttpClient y Newtonsoft.Json
+            
             try
             {
                 using (var client = new HttpClient())
                 {
-                    var apiKey = "sin API";
+                    var apiKey = "Api key secreta";
                     client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
                     var requestBody = new
@@ -613,7 +537,7 @@ namespace TechHelper_AI
 
         private async Task GuardarImpresoraAsync(
     string codigo, string marca, string modelo, string problema, string solucion,
-    string fecha, bool usoIA, string comentarios, bool editar = false, int id = 0) // usa los PARÁMETROS
+    string fecha, bool usoIA, string comentarios, bool editar = false, int id = 0) 
         {
             using (SqlConnection conn = new SqlConnection(ConexionBD.ConnectionString))
             {
@@ -701,14 +625,15 @@ namespace TechHelper_AI
 
             txtCodigo.Text = await GenerarCodigoAsync(tipo);
         }
+
+       
+
         private void GenerarWord(string tipo, string codigo, string marca, string modelo, string sintoma, string solucion, string fecha, bool usoIA, string comentarios)
         {
-            // Carpeta "TechHelper" en el escritorio del usuario actual
             string desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
             string carpeta = Path.Combine(desktop, "TechHelper");
             Directory.CreateDirectory(carpeta); // La crea si no existe
 
-            // El nombre del archivo: "CODIGO_MODELO.docx"
             string fileName = Path.Combine(carpeta, $"{codigo}_{modelo}_{DateTime.Now:yyyyMMddHHmmss}.docx");
 
             using (WordprocessingDocument doc = WordprocessingDocument.Create(fileName, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
@@ -716,18 +641,13 @@ namespace TechHelper_AI
                 MainDocumentPart mainPart = doc.AddMainDocumentPart();
                 mainPart.Document = new Document();
                 Body body = new Body();
-
-                // ---- Logo (si lo quieres, ver sección 2 abajo)
-                // Puedes insertar imagenes, ver más adelante
-
-                // ---- Encabezado bonito
+                             
                 body.Append(
                     GetTitulo("Reporte Técnico - TechHelper AI"),
                     new Paragraph(new Run(new Text(""))), // espacio
                     new Paragraph(new Run(new Text($"Fecha: {fecha}"))) { ParagraphProperties = new ParagraphProperties(new Justification() { Val = JustificationValues.Right }) }
                 );
 
-                // ---- Cuerpo con estilo
                 body.Append(
                     GetCampo("Tipo", tipo),
                     GetCampo("Código", codigo),
@@ -745,7 +665,6 @@ namespace TechHelper_AI
             MessageBox.Show($"Documento generado: {fileName}");
         }
 
-        // -- Métodos helper para estilos bonitos:
         private Paragraph GetTitulo(string texto)
         {
             return new Paragraph(new Run(
@@ -762,7 +681,7 @@ namespace TechHelper_AI
 
         private Paragraph GetCampo(string etiqueta, string valor, bool multi = false)
         {
-            // Puedes mejorar con subrayado, color, etc
+            
             var props = new ParagraphProperties();
             if (multi) props.SpacingBetweenLines = new SpacingBetweenLines() { After = "150" };
             return new Paragraph(
@@ -773,6 +692,19 @@ namespace TechHelper_AI
                 new Run(new Text(valor))
             )
             { ParagraphProperties = props };
+        }
+        
+        private async void btnBuscar_Click(object sender, EventArgs e)
+        {
+            string sintoma = txtSintoma.Text.Trim();
+            
+            historialIA.Add(new { role = "user", content = sintoma });
+                        
+            string respuestaIA = await ConsultarIAAsync(historialIA);
+                        
+            historialIA.Add(new { role = "assistant", content = respuestaIA });
+            
+            MessageBox.Show(respuestaIA, "Respuesta IA", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }
